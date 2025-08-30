@@ -1,0 +1,117 @@
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Cococel 3D Secure</title>
+    <style>
+        .backdrop {
+            z-index: 0;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+<body id="stu-3ds">
+    <div class="backdrop" style="border-radius: 8px">
+        <div id="spinner" class="text-center">
+            <picture>
+                <source srcset="loader_cococel.gif" type="image/gif">
+                <img style="height: 70px; width:70px" src="loader_cococel.gif">
+            </picture>
+        </div>
+    </div>
+</body>
+<script>
+function pad2(n) {
+    return n < 10 ? '0' + n : n;
+}
+
+function AndroidExecutePaymentVerification(cardNumber, expirationYear, expirationMonth, amount, efsToken){
+    return ExecutePaymentVerification(cardNumber, expirationYear, expirationMonth, amount, efsToken, "Android");
+}
+
+function iOSExecutePaymentVerification(cardNumber, expirationYear, expirationMonth, amount, efsToken){
+    return ExecutePaymentVerification(cardNumber, expirationYear, expirationMonth, amount, efsToken, "iOS");
+}
+
+function ExecutePaymentVerification(cardNumber, expirationYear, expirationMonth, amount, efsToken, userAgent) {
+    try {
+        var scr = document.createElement('script'),
+            head = document.head || document.getElementsByTagName('head')[0];
+        scr.src = 'https://libs.fraud.elavongateway.com/sdk-web-js/1.2.0/3ds2-web-sdk.min.js';
+        scr.async = false;
+        head.insertBefore(scr, head.firstChild);
+        scr.addEventListener('load', () => {
+            var date = new Date();
+            var strDate = date.getFullYear().toString() + pad2(date.getMonth() + 1) + pad2(date.getDate()) +
+                pad2(date.getHours()) + pad2(date.getMinutes()) + pad2(date.getSeconds());
+            const efsUrl = "https://gw.fraud.elavongateway.com/3ds2";
+
+            const sdk = new window.Elavon3DSWebSDK({
+                baseUrl: efsUrl,
+                token: efsToken,
+                el: 'holder'
+            });
+
+            const request = {
+                clientStartProtocolVersion: "2.1.0",
+                clientEndProtocolVersion: "2.2.0",
+                purchaseAmount: (amount * 100).toString(),
+                purchaseCurrency: "840",
+                purchaseExponent: "2",
+                acctNumber: cardNumber,
+                cardExpiryDate: expirationYear + expirationMonth,
+                messageCategory: "01",
+                transType: "01",
+                threeDSRequestorAuthenticationInd: "01",
+                challengeWindowSize: "05",
+                displayMode: "inline",
+                challengeIframeElement: document.getElementById('stu-3ds'),
+                purchaseDate: strDate
+            };
+
+            sdk.web3dsFlow(request).then(function success(response) {
+                HandleResult(response, userAgent);
+            }, function error(response) {
+                HandleResult(response, userAgent);
+            });
+
+            setTimeout(function () {
+                document.getElementById("spinner").style.display = "none";
+            }, 2500);
+        });
+    } catch (error) {
+        HandleResult(null, userAgent);
+    }
+}
+
+function HandleResult(response, userAgent) {
+    document.getElementById("spinner").style.display = "flex";
+    var result = {
+        externalData: response ? JSON.stringify(response) : "",
+        purchaseId: response?.purchaseId || "",
+        token: response?.token || ""
+    };
+
+    switch (userAgent) {
+        case "Android":
+            Android.Secure3Dv2ResponseCallback(JSON.stringify(result));
+            break;
+        case "iOS":
+            window.webkit.messageHandlers.secure3DCallbackHandler.postMessage(JSON.stringify(result));
+            break;
+        case "Web":
+            if (window.parent) {
+                window.parent.postMessage(result, "*");
+            }
+            break;
+    }
+}
+</script>
+</html>
